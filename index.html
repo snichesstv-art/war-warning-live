@@ -647,6 +647,8 @@ function renderStage(){
     h += ladder("1950년 (6·25 직전)", 6, `${esc(s4.date)} ${esc(s4.event)} → ${esc(s6.date)} 전면전`, "전면전");
     const k = dy.korea_now;
     h += ladder("지금 한반도", k?k.stage.stage:0, stageWhy(k&&k.stage), k?STG[k.stage.stage-1]:"");
+    const C = J.collector;
+    if(C) h += `<p class="say">뉴스 교차검증 수집기(6권역 중 4곳 이상 보도, 최근 ${C.window_days}일): <b>${C.stage}단계 ${esc(C.stage_name)}</b>${C.last_confirmed?` · 마지막 확인 ${esc(C.last_confirmed.date||"")} ${C.last_confirmed.stage?C.last_confirmed.stage+"단계":""}`:""}${C.reliable?"":` — <b>믿을 수 없음</b>(GDELT 자료 공백으로 조회 성공 ${Math.round((C.coverage||0)*100)}%)`}. 위 사다리는 손으로 확인한 사건 기준, 이 줄은 자동 뉴스 집계 기준이라 둘을 나란히 보여 줍니다.</p>`;
     const stop = Object.values(J.wars).filter(w=>w.region==="한반도" && !w.escalated);
     const by = d3.rollup(stop, v=>v.length, w=>w.max_stage);
     h += `<p class="say">1953년 정전 뒤 한반도 위기 <b>${stop.length}건</b>은 모두 전면전 전에 멈췄습니다 (${[...by].sort((a,b)=>b[0]-a[0]).map(([s,n])=>`${STG[s-1]}에서 ${n}건`).join(", ")}).</p>`;
