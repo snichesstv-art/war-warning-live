@@ -241,6 +241,7 @@ h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.01em;text-wrap:balan
       <button data-k="ww3" aria-pressed="false">3차대전이 난다면</button>
     </div>
     <section class="card" id="c-stage"></section>
+    <section class="card" id="c-trend"></section>
     <section class="card" id="c-clock"></section>
     <section class="card" id="c-gauge"></section>
     <p class="note" id="j-note"></p>
@@ -776,6 +777,43 @@ function renderStage(){
   el.innerHTML = h;
 }
 
+// 최근 변화율: 하루 충돌·도발 사건 수(GDELT 15분 원본) + 평소 수준(직전 28일 '전체 대비 비율' 중간값 × 그날 전체)
+function renderTrend(){
+  const el = document.getElementById("c-trend"), T = (J.trend||{}).days;
+  const kr = js.track==="korea", key = kr ? "korea" : "world";
+  el.innerHTML = `<h2>최근 변화율</h2>`;
+  if(!T){ el.insertAdjacentHTML("beforeend",`<p class="say">하루 사건 수를 모으는 중입니다.</p>`); return; }
+  const D = Object.keys(T).sort().map(k => ({k, t:new Date(k+"T12:00:00Z"), ...T[k]})).filter(d => d.missing <= 16 && d.total > 0);
+  D.forEach((d,i) => { const prev = D.slice(Math.max(0,i-28), i);
+    d.base = prev.length >= 14 ? d3.median(prev, p => p[key]/p.total) * d.total : null; });
+  const last = D.filter(d => d.t > d3.timeDay.offset(D[D.length-1].t, -7)), lb = last.filter(d => d.base != null);
+  const avg = d3.mean(last, d => d[key]), ratio = lb.length ? d3.sum(lb, d => d[key]) / d3.sum(lb, d => d.base) : null;
+  const chg = ratio == null ? null : Math.round((ratio-1)*100);
+  const nm = kr ? "한반도 충돌·도발 사건" : "강대국이 낀 공격·교전 사건";
+  el.insertAdjacentHTML("beforeend", `<div class="hero"><span class="big">${chg==null?"–":(chg>0?"+":"")+chg+"%"}</span><span>최근 7일, 평소 대비<br><span class="stat">${nm} 하루 평균 ${avg==null?"–":Math.round(avg)}건 · 평소 = 직전 28일</span></span></div>`);
+  const W=1000, H=300, L=46, R=985, top=14, bot=H-26;
+  const svg = d3.select(el).append("svg").attr("class","chart").attr("viewBox",`0 0 ${W} ${H}`).attr("aria-label","하루 사건 수 그래프");
+  const x0 = d3.scaleTime().domain([d3.timeDay.offset(D[0].t,-1), d3.timeDay.offset(D[D.length-1].t,1)]).range([L,R]);
+  const y = d3.scaleLinear().domain([0, d3.max(D, d => Math.max(d[key], d.base||0))*1.1 || 1]).nice().range([bot, top]);
+  svg.append("defs").append("clipPath").attr("id","clp-trend").append("rect").attr("x",L).attr("y",0).attr("width",R-L).attr("height",H);
+  svg.append("g").attr("class","ax").attr("transform",`translate(${L},0)`).call(d3.axisLeft(y).ticks(5));
+  const g = svg.append("g").attr("clip-path","url(#clp-trend)"), ax = svg.append("g").attr("class","ax").attr("transform",`translate(0,${bot})`);
+  const tip = svg.append("text").attr("x",R).attr("y",top+10).attr("text-anchor","end").attr("font-size",13).attr("fill",css("--fg"));
+  zoomX(svg, x0, x => {
+    g.selectAll("*").remove();
+    const bw = Math.max(1, (x(d3.timeDay.offset(D[0].t,1)) - x(D[0].t)) * .8);
+    g.selectAll("rect.a").data(D).join("rect").attr("x", d => x(d.t)-bw/2).attr("width", bw).attr("y", d => y(d[key])).attr("height", d => bot-y(d[key]))
+      .attr("fill", css("--muted")).attr("opacity", .55)
+      .on("pointerenter", (e,d) => tip.text(`${d.k} · ${d[key]}건 (공격·교전 ${d[key+"_sev4"]}건)${d.base!=null?` · 평소 ${Math.round(d.base)}건`:""}`));
+    g.selectAll("rect.b").data(D).join("rect").attr("x", d => x(d.t)-bw/2).attr("width", bw).attr("y", d => y(d[key+"_sev4"])).attr("height", d => bot-y(d[key+"_sev4"]))
+      .attr("fill", css("--accent")).attr("pointer-events","none");
+    g.append("path").datum(D.filter(d => d.base != null)).attr("fill","none").attr("stroke",css("--fg")).attr("stroke-width",1.6).attr("stroke-dasharray","5 4")
+      .attr("d", d3.line().x(d => x(d.t)).y(d => y(d.base)));
+    ax.call(d3.axisBottom(x).ticks(6).tickFormat(d3.timeFormat("%-m/%-d")));
+  });
+  el.insertAdjacentHTML("beforeend", `<p class="say">막대 = 하루 사건 수(진한 부분은 공격·교전), 점선 = 평소 수준. 평소 수준은 직전 28일 동안 GDELT 전체 사건 가운데 이 사건이 차지한 비율의 중간값에 그날 전체 사건 수를 곱한 값입니다 — 뉴스 양 자체가 늘고 준 것은 빼고 봅니다. 사건 수는 기사에서 자동으로 뽑은 것이라 같은 일이 여러 번 세어질 수 있고, 확인된 사건 수가 아닙니다. 두 손가락·휠로 확대, 두 번 누르면 원래대로.</p>`);
+}
+
 // x축만 확대·이동(두 손가락·휠), 두 번 누르면 원래대로
 function zoomX(svg, x0, draw){
   const [a,b] = x0.range();
@@ -1020,7 +1058,7 @@ function renderNote(){
   document.getElementById("j-note").innerHTML = `남은 시간은 "과거 경로를 그대로 따른다면"이라는 조건이 붙은 값입니다. 같은 요인이 켜지고도 멈춘 위기가 더 많았습니다. 계산 규칙은 지금 자료를 보기 전에 정해 두었습니다(analysis/PREREG_clock.md). 요인은 결과를 아는 상태에서 채운 것이라 실제보다 강하게 나왔을 수 있고, 2022 우크라이나·2023 가자 두 건은 마지막 확인용으로 아직 열지 않았습니다.`;
 }
 
-function renderJudge(){ renderStage(); renderClock(); renderGauge(); renderNote(); }
+function renderJudge(){ renderStage(); renderTrend(); renderClock(); renderGauge(); renderNote(); }
 document.querySelectorAll("#track button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("#track button").forEach(x=>x.setAttribute("aria-pressed", x===b)); js.track=b.dataset.k; renderJudge(); });
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{
